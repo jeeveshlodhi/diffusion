@@ -7,10 +7,10 @@ export default function DiffChecker() {
     const [file2, setFile2] = useState<File | null>(null);
     const [diffResult, setDiffResult] = useState<string | null>(null);
     const [parsedDiff, setParsedDiff] = useState<{
-        header: string;
+        header: string; 
         summary: string;
         lines: Array<{
-            type: 'added' | 'removed' | 'unchanged';
+            type: string;
             leftLineNum?: number;
             rightLineNum?: number;
             content: string;
