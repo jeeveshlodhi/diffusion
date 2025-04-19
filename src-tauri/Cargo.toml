@@ -1,5 +1,5 @@
 [package]
-name = "diffusion"
+name = "Diffusion"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["jeevesh"]
@@ -23,4 +23,3 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 similar = "2.2.0"
-
