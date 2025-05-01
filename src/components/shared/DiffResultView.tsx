@@ -1,7 +1,9 @@
 import { CheckCircle, Copy } from 'lucide-react';
 import { Button } from '@/components/shared/global/button';
 import { Card } from '@/components/shared/global/card';
-import { Table, TableBody, TableCell, TableRow } from '@/components/shared/global/table';
+import { useEffect, useState } from 'react';
+import * as Diff2Html from 'diff2html';
+import 'diff2html/bundles/css/diff2html.min.css';
 
 interface DiffResultViewProps {
     parsedDiff: {
@@ -19,7 +21,10 @@ interface DiffResultViewProps {
     file2Name: string | null;
     onCopy: () => void;
     copied: boolean;
-    onLineClick?: (index: number) => void;
+    rawDiff?: string; // Make rawDiff optional
+    onLineClick?: (index: number, side: 'left' | 'right') => void;
+    selectionMode?: boolean;
+    selectedSide?: 'left' | 'right';
 }
 
 export const DiffResultView: React.FC<DiffResultViewProps> = ({
@@ -28,8 +33,101 @@ export const DiffResultView: React.FC<DiffResultViewProps> = ({
     file2Name,
     onCopy,
     copied,
+    rawDiff = '', // Provide default empty string
     onLineClick,
+    selectionMode = true,
+    selectedSide,
 }) => {
+    const [diffHtml, setDiffHtml] = useState('');
+    
+    useEffect(() => {
+        if (!rawDiff) {
+            // Generate a unified diff format from parsedDiff if rawDiff is not provided
+            const generatedDiff = generateDiffFromParsed(parsedDiff, file1Name || 'original', file2Name || 'modified');
+            renderDiff(generatedDiff);
+        } else {
+            renderDiff(rawDiff);
+        }
+        
+    }, [rawDiff, parsedDiff, file1Name, file2Name, selectionMode, onLineClick, selectedSide]);
+    
+    // Function to generate a simple unified diff from our parsed diff structure
+    const generateDiffFromParsed = (
+        parsedDiff: DiffResultViewProps['parsedDiff'], 
+        oldFileName: string, 
+        newFileName: string
+    ) => {
+        let diff = `--- a/${oldFileName}\n+++ b/${newFileName}\n@@ -1,1 +1,1 @@\n`;
+        
+        parsedDiff.lines.forEach(line => {
+            if (line.type === 'added') {
+                diff += `+${line.content}\n`;
+            } else if (line.type === 'removed') {
+                diff += `-${line.content}\n`;
+            } else {
+                diff += ` ${line.content}\n`;
+            }
+        });
+        
+        return diff;
+    };
+    
+    // Function to render the diff using diff2html
+    const renderDiff = (diffInput: string) => {
+        try {
+            // Configure diff2html options
+            const configuration = {
+                drawFileList: false,
+                matching: 'lines',
+                outputFormat: 'side-by-side',
+                highlight: true,
+                fileContentToggle: false,
+                renderNothingWhenEmpty: false,
+            };
+            
+            // Generate the diff HTML
+            const diffJson = Diff2Html.parse(diffInput);
+            const html = Diff2Html.html(diffJson, configuration);
+            setDiffHtml(html);
+            
+            // After the diff is rendered, we can attach event listeners for line selection if needed
+            if (selectionMode && onLineClick) {
+                setTimeout(() => {
+                    attachLineClickHandlers();
+                }, 100);
+            }
+        } catch (error) {
+            console.error('Error rendering diff:', error);
+            setDiffHtml(`<div class="p-4 text-red-500">Error rendering diff: ${error.message}</div>`);
+        }
+    };
+    
+    // Function to attach click handlers to diff lines for selection
+    const attachLineClickHandlers = () => {
+        const container = document.getElementById('diff-container');
+        if (!container) return;
+        
+        // Find all added lines (usually have a class like 'd2h-ins' or similar in diff2html)
+        const addedLines = container.querySelectorAll('.d2h-ins');
+        addedLines.forEach((line, index) => {
+            line.classList.add('cursor-pointer', 'hover:bg-opacity-80');
+            if (selectedSide === 'right') {
+                line.classList.add('bg-green-100');
+            }
+            line.addEventListener('click', () => onLineClick && onLineClick(index, 'right'));
+        });
+        
+        // Find all removed lines
+        const removedLines = container.querySelectorAll('.d2h-del');
+        removedLines.forEach((line, index) => {
+            line.classList.add('cursor-pointer', 'hover:bg-opacity-80');
+            if (selectedSide === 'left') {
+                line.classList.add('bg-red-100');
+            }
+            line.addEventListener('click', () => onLineClick && onLineClick(index, 'left'));
+        });
+    };
+
     return (
         <Card className="animate-fadeIn">
             <div className="p-4">
@@ -44,6 +142,14 @@ export const DiffResultView: React.FC<DiffResultViewProps> = ({
                     </Button>
                 </div>
 
+                {selectionMode && (
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                        <p className="text-sm text-blue-700">
+                            <strong>Manual Selection Mode:</strong> Click on added or removed lines to select which ones to keep in the merged file.
+                        </p>
+                    </div>
+                )}
+
                 <div className="flex flex-col">
                     <div className="overflow-x-auto">
                         <div className="grid grid-cols-2 gap-1 mb-4">
@@ -55,59 +161,24 @@ export const DiffResultView: React.FC<DiffResultViewProps> = ({
                             </div>
                         </div>
 
-                        <div className="overflow-auto max-h-96 border border-gray-200 rounded-lg">
-                            <Table>
-                                <TableBody className="divide-y divide-gray-200">
-                                    {parsedDiff.lines.map((line, idx) => (
-                                        <TableRow
-                                            key={idx}
-                                            className={`
-                                        ${line.type === 'added' ? 'bg-green-50' : ''}
-                                        ${line.type === 'removed' ? 'bg-red-50' : ''}
-                                        ${onLineClick && line.type !== 'unchanged' ? 'cursor-pointer hover:bg-gray-100' : ''}
-                                        ${line.selected ? 'ring-2 ring-blue-500' : ''}
-                                      `}
-                                            onClick={() => onLineClick && onLineClick(idx)}
-                                        >
-                                            <TableCell className="p-1 text-xs text-gray-500 text-right select-none w-10 border-r border-gray-200">
-                                                {line.leftLineNum || ''}
-                                            </TableCell>
-                                            <TableCell
-                                                className={`p-1 font-mono text-sm whitespace-pre ${
-                                                    line.type === 'removed' ? 'bg-red-100' : ''
-                                                }`}
-                                            >
-                                                {line.type !== 'added' ? line.content : ''}
-                                            </TableCell>
-                                            <TableCell className="p-1 text-xs text-gray-500 text-right select-none w-10 border-l border-r border-gray-200">
-                                                {line.rightLineNum || ''}
-                                            </TableCell>
-                                            <TableCell
-                                                className={`p-1 font-mono text-sm whitespace-pre ${
-                                                    line.type === 'added' ? 'bg-green-100' : ''
-                                                }`}
-                                            >
-                                                {line.type !== 'removed' ? line.content : ''}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
+                        <div 
+                            id="diff-container"
+                            className="border border-gray-200 rounded-lg overflow-auto max-h-96"
+                            dangerouslySetInnerHTML={{ __html: diffHtml }}
+                        />
                     </div>
 
                     <div className="mt-4 p-3 bg-gray-100 rounded-lg">
-                        <h4 className="font-medium text-gray-800">Summary</h4>
-                        <p className="text-sm text-gray-700">
+                        <h4 className="font-medium text-gray-800 mb-2">Summary</h4>
+                        <div className="text-sm text-gray-700">
                             {parsedDiff.summary.split('\n').map((line, i) =>
                                 line.startsWith('##') ? null : (
-                                    <span key={i}>
+                                    <div key={i} className="mb-1">
                                         {line}
-                                        <br />
-                                    </span>
+                                    </div>
                                 ),
                             )}
-                        </p>
+                        </div>
                     </div>
                 </div>
             </div>
