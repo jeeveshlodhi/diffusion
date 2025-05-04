@@ -5,7 +5,6 @@ import { Button } from '@/components/shared/global/button';
 import { FileUploadCard } from './FileUploadCard';
 import { DiffResultView } from './DiffResultView';
 import { ErrorAlert } from './ErrorAlert';
-import { Alert, AlertDescription, AlertTitle } from '@/components/shared/global/alert';
 
 // Define types based on the Rust API
 interface DiffResult {
@@ -55,8 +54,6 @@ export default function DiffChecker() {
     const [showUpload, setShowUpload] = useState(true);
     const [mergedContent, setMergedContent] = useState<string | null>(null);
     const [mergeSuccess, setMergeSuccess] = useState<boolean | null>(null);
-    const [mergeInProgress, setMergeInProgress] = useState(false);
-    const [mergeStrategy, setMergeStrategy] = useState<string>("merge");
 
     const readFileAsText = (file: File): Promise<string> => {
         return new Promise((resolve, reject) => {
@@ -79,12 +76,12 @@ export default function DiffChecker() {
         
         // Create summary
         const summary = `## Summary
-Total lines: ${diffResponse.summary.total_lines}
-Added lines: ${diffResponse.summary.added_lines}
-Removed lines: ${diffResponse.summary.removed_lines}
-Unchanged lines: ${diffResponse.summary.unchanged_lines}
-Similarity: ${(diffResponse.summary.similarity_ratio * 100).toFixed(2)}%
-`;
+            Total lines: ${diffResponse.summary.total_lines}
+            Added lines: ${diffResponse.summary.added_lines}
+            Removed lines: ${diffResponse.summary.removed_lines}
+            Unchanged lines: ${diffResponse.summary.unchanged_lines}
+            Similarity: ${(diffResponse.summary.similarity_ratio * 100).toFixed(2)}%
+        `;
 
         // Track line numbers for left and right files
         let leftLineNum = 0;
@@ -185,65 +182,6 @@ Similarity: ${(diffResponse.summary.similarity_ratio * 100).toFixed(2)}%
         setShowUpload(true);
     };
 
-    const toggleLineSelection = (index: number) => {
-        if (!parsedDiff) return;
-
-        const updatedLines = [...parsedDiff.lines];
-        const line = updatedLines[index];
-
-        // Only allow toggling for changed lines (not unchanged)
-        if (line.type !== 'unchanged') {
-            updatedLines[index] = {
-                ...line,
-                selected: !line.selected,
-            };
-            setParsedDiff({
-                ...parsedDiff,
-                lines: updatedLines,
-            });
-        }
-    };
-
-    const handleMerge = async () => {
-        if (!file1 || !file2) return;
-        
-        setMergeInProgress(true);
-        setError(null);
-        
-        try {
-            if (mergeStrategy === "manual" && parsedDiff) {
-                // Manual merge uses the UI selections
-                let mergedText = '';
-                for (const line of parsedDiff.lines) {
-                    if (line.type === 'unchanged' || line.selected) {
-                        mergedText += line.content + '\n';
-                    }
-                }
-                setMergedContent(mergedText);
-                setMergeSuccess(true);
-            } else {
-                // Use the Rust API's conflict resolution
-                const content1 = await readFileAsText(file1);
-                const content2 = await readFileAsText(file2);
-                
-                const mergedText = await invoke<string>('resolve_conflicts', {
-                    fileContent1: content1,
-                    fileContent2: content2,
-                    resolutionStrategy: mergeStrategy,
-                });
-                
-                setMergedContent(mergedText);
-                setMergeSuccess(true);
-            }
-        } catch (err) {
-            console.error('Error merging files:', err);
-            setError(typeof err === 'string' ? err : 'Failed to merge files');
-            setMergeSuccess(false);
-        } finally {
-            setMergeInProgress(false);
-        }
-    };
-
     const downloadMergedFile = () => {
         if (!mergedContent || !file1) return;
 
@@ -329,34 +267,7 @@ Similarity: ${(diffResponse.summary.similarity_ratio * 100).toFixed(2)}%
                 </>
             ) : (
                 <>
-                    <div className="flex flex-col md:flex-row justify-end mb-4 gap-2">
-                        <div className="flex items-center mr-auto mb-2 md:mb-0">
-                            <span className="mr-2 text-sm font-medium">Merge Strategy:</span>
-                            <select 
-                                className="border rounded px-2 py-1 text-sm"
-                                value={mergeStrategy}
-                                onChange={(e) => setMergeStrategy(e.target.value)}
-                            >
-                                <option value="merge">Smart Merge (with conflict markers)</option>
-                                <option value="prefer_first">Use First File</option>
-                                <option value="prefer_second">Use Second File</option>
-                                <option value="manual">Manual Selection</option>
-                            </select>
-                        </div>
-                        
-                        <Button 
-                            onClick={handleMerge} 
-                            variant="default"
-                            disabled={mergeInProgress}
-                        >
-                            {mergeInProgress ? (
-                                <Loader2 className="animate-spin h-4 w-4 mr-2" />
-                            ) : (
-                                <Merge className="h-4 w-4 mr-2" />
-                            )}
-                            Merge Files
-                        </Button>
-                        
+                    <div className="flex flex-col md:flex-row justify-end mb-4 gap-2">                        
                         {mergedContent && (
                             <Button onClick={downloadMergedFile} variant="secondary">
                                 Download Merged File
@@ -366,18 +277,6 @@ Similarity: ${(diffResponse.summary.similarity_ratio * 100).toFixed(2)}%
 
                     {mergeSuccess === false && (
                         <ErrorAlert error="Failed to merge files. Please check the differences and try again." />
-                    )}
-
-                    {mergeSuccess && (
-                        <Alert variant="default" className="mb-4">
-                            <Check className="h-4 w-4" />
-                            <AlertTitle>Merge Successful</AlertTitle>
-                            <AlertDescription>
-                                Files have been successfully merged. You can now download the merged file.
-                                {mergeStrategy === "merge" && 
-                                    " The merged file contains conflict markers (<<<<<<< FILE 1, =======, >>>>>>> FILE 2) for manual resolution."}
-                            </AlertDescription>
-                        </Alert>
                     )}
                 </>
             )}
@@ -392,8 +291,6 @@ Similarity: ${(diffResponse.summary.similarity_ratio * 100).toFixed(2)}%
                         file2Name={file2?.name || null}
                         onCopy={copyToClipboard}
                         copied={copied}
-                        onLineClick={toggleLineSelection}
-                        selectionMode={mergeStrategy === "manual"}
                     />
                 </div>
             )}
